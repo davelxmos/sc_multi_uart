@@ -51,8 +51,8 @@ fl_DeviceSpec myFlashDevices[] =
 
 fsdata_t fsdata[] =
 {
-		{ "/index.html", 0, 4827 },
-		{ "/img/xmos_logo.gif", 19, 915 },
+    { "/index.html", 0, 4894 },
+    { "/img/xmos_logo.gif", 20, 915 },
 };
 
 /*---------------------------------------------------------------------------

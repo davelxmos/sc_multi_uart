@@ -320,7 +320,8 @@ void httpd_send(chanend tcp_svr, xtcp_connection_t *conn, chanend cPersData)
 {
     int i;
     int length_page;
-
+    char origin_header[] = "Access-Control-Allow-Origin: *\r\n";
+    int len_origin_header;
     httpd_state_t *hs = (httpd_state_t *) conn->appstate;
     length_page = (hs->wpage_length < FLASH_SIZE_PAGE) ? hs->wpage_length
                                                        : FLASH_SIZE_PAGE;
@@ -352,6 +353,15 @@ void httpd_send(chanend tcp_svr, xtcp_connection_t *conn, chanend cPersData)
                 {
                     setup_error_webpage(hs);
                 }
+            }
+            else if(hs->http_request_type == HTTP_REQ_GET_DATA)
+            {
+                // having this header to circumvent the "Same Origin Policy"
+                len_origin_header = strlen(origin_header);
+                length_page += len_origin_header;
+
+                memmove(hs->wpage_data+len_origin_header, hs->wpage_data, strlen(hs->wpage_data)+1);
+                memcpy(hs->wpage_data, origin_header, len_origin_header);
             }
             xtcp_send(tcp_svr, hs->wpage_data, length_page);
             break;

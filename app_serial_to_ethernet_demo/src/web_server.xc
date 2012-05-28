@@ -400,6 +400,7 @@ static void fetch_uart_data_and_send_to_client(chanend tcp_svr,
 {
     int i;
     int length_page;
+    unsigned buf_length;
 
     switch (conn.event)
     {
@@ -412,16 +413,15 @@ static void fetch_uart_data_and_send_to_client(chanend tcp_svr,
         {
             outct(cAppMgr2WbSvr, '2'); //PULL_UART_DATA_FROM_UART_TO_APP
             cAppMgr2WbSvr <: xtcp_send_data_buffer.uart_id;
-            cAppMgr2WbSvr :> xtcp_send_data_buffer.buf_length;
-
+            cAppMgr2WbSvr :> buf_length;
             /* Get UART data */
-            for (i=0; i<xtcp_send_data_buffer.buf_length; i++)
+            for (i = 0; i < buf_length; i++)
             {
                 /* Store Uart X data from channel */
                 cAppMgr2WbSvr :> xtcp_send_data_buffer.uart_rx_buffer_to_send[i];
             }
-
-            xtcp_send(tcp_svr, xtcp_send_data_buffer.uart_rx_buffer_to_send, xtcp_send_data_buffer.buf_length);
+            xtcp_send_data_buffer.buf_length = buf_length;
+            xtcp_send(tcp_svr, xtcp_send_data_buffer.uart_rx_buffer_to_send, buf_length);
             break;
         }
         case XTCP_SENT_DATA:
@@ -635,6 +635,7 @@ void web_server_handle_event(chanend tcp_svr,
                 {
                     int TempLen = 0;
                     int i = 0;
+                    int write_index = 0;
 
                     TempLen = telnetd_recv_data(tcp_svr, conn, g_telnet_recd_data_buffer[0], g_telnet_actual_data_buffer[0]);
 #if ENABLE_XSCOPE == 1
@@ -677,16 +678,17 @@ void web_server_handle_event(chanend tcp_svr,
                         /* Upon data consumption, unpause connection */
                     }
 
-                    for (i=0; i<TempLen; i++)
+                    write_index = xtcp_recd_data_buffer[uart_id].write_index;
+
+                    for(i = 0; i < TempLen; i++)
                     {
-                        xtcp_recd_data_buffer[uart_id].telnet_recd_data[xtcp_recd_data_buffer[uart_id].write_index] = g_telnet_actual_data_buffer[i];
-                        xtcp_recd_data_buffer[uart_id].write_index++;
-                        if (xtcp_recd_data_buffer[uart_id].write_index >= (XTCP_CLIENT_BUF_SIZE * 2))
-                        {
-                            xtcp_recd_data_buffer[uart_id].write_index = 0;
-                        }
-                        xtcp_recd_data_buffer[uart_id].buf_depth++;
+                        xtcp_recd_data_buffer[uart_id].telnet_recd_data[write_index] = g_telnet_actual_data_buffer[i];
+                        write_index++;
+                        if(write_index >= (XTCP_CLIENT_BUF_SIZE * 2)) { write_index = 0; }
                     }
+
+                    xtcp_recd_data_buffer[uart_id].write_index = write_index;
+                    xtcp_recd_data_buffer[uart_id].buf_depth += TempLen;
                 }
             }
             break;
@@ -738,6 +740,7 @@ static void send_uart_tx_data(chanend tcp_svr, chanend cAppMgr2WbSvr)
     int i;
     int uart_id = 0;
     int data_to_send = 0;
+    int read_index = 0;
 
     uart_id = g_UartTxNumToSend;
     cAppMgr2WbSvr <: uart_id;
@@ -745,18 +748,20 @@ static void send_uart_tx_data(chanend tcp_svr, chanend cAppMgr2WbSvr)
     data_to_send = (xtcp_recd_data_buffer[g_UartTxNumToSend].buf_depth > buf_depth_avialable) ? buf_depth_avialable : xtcp_recd_data_buffer[g_UartTxNumToSend].buf_depth;
     cAppMgr2WbSvr <: data_to_send; //Amount of bytes to send
 
+    read_index = xtcp_recd_data_buffer[g_UartTxNumToSend].read_index;
+
     /* Get UART data */
-    for (i=0; i<data_to_send; i++)
+    for (i = 0; i < data_to_send; i++)
     {
         /* Send Uart X data to MUART TX */
-        cAppMgr2WbSvr <: xtcp_recd_data_buffer[g_UartTxNumToSend].telnet_recd_data[xtcp_recd_data_buffer[g_UartTxNumToSend].read_index];
-        xtcp_recd_data_buffer[g_UartTxNumToSend].read_index++;
-        if (xtcp_recd_data_buffer[g_UartTxNumToSend].read_index >= XTCP_CLIENT_BUF_SIZE * 2)
-        {
-            xtcp_recd_data_buffer[g_UartTxNumToSend].read_index = 0;
-        }
-        xtcp_recd_data_buffer[g_UartTxNumToSend].buf_depth--;
+        cAppMgr2WbSvr <: xtcp_recd_data_buffer[g_UartTxNumToSend].telnet_recd_data[read_index];
+        read_index++;
+        if (read_index >= XTCP_CLIENT_BUF_SIZE * 2) { read_index = 0; }
     }
+
+    /* update buffer pointers */
+    xtcp_recd_data_buffer[g_UartTxNumToSend].read_index = read_index;
+    xtcp_recd_data_buffer[g_UartTxNumToSend].buf_depth -= data_to_send;
 
     if (xtcp_recd_data_buffer[g_UartTxNumToSend].buf_depth <= 0)
     {

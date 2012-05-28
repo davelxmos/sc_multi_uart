@@ -402,11 +402,16 @@ void uart_rx_receive_uart_channel_data( streaming chanend cUART, unsigned channe
 #if ENABLE_XSCOPE == 1
         else
         {
-            printstr("App uart RX buffer full. Missed char for chnl id: ");
-            printintln(channel_id);
+            printstrln("Overflow");
         }
-#endif	//DEBUG_LEVEL_2
+#endif
     } // if(uart_rx_validate_char(channel_id, uart_char) == 0)
+#if ENABLE_XSCOPE == 1
+    else
+    {
+        printstrln("Invalid char");
+    }
+#endif
 }
 
 /** =========================================================================
@@ -457,7 +462,7 @@ static void poll_uart_rx_data_to_send_to_client(chanend cAppMgr2WbSvr, timer tmr
      timeout and then send anything left in the fifo
      */
     tmr :> now;
-    if timeafter(now, uart_rx_channel_state[channel_id].last_added_timestamp + RX_CHANNEL_FLUSH_TIMEOUT)
+    if (timeafter(now, uart_rx_channel_state[channel_id].last_added_timestamp + RX_CHANNEL_FLUSH_TIMEOUT))
     {
         min_buf_level = 0;
     }
@@ -494,19 +499,25 @@ static void collect_uart_tx_data(chanend cAppMgr2WbSvr)
     int channel_id = -1;
     char chan_data;
 
+    int write_index = 0;
+
     cAppMgr2WbSvr :> channel_id;
     buf_depth_available = TX_CHANNEL_FIFO_LEN - uart_tx_channel_state[channel_id].buf_depth;
     cAppMgr2WbSvr <: buf_depth_available;
     cAppMgr2WbSvr :> buf_depth_available; //This now contains only required buf depth to send
 
+    write_index = uart_tx_channel_state[channel_id].write_index;
+
     for (i = 0; i < buf_depth_available; i++)
     {
         cAppMgr2WbSvr :> chan_data;
-        uart_tx_channel_state[channel_id].channel_data[uart_tx_channel_state[channel_id].write_index] = (char)chan_data;
-        uart_tx_channel_state[channel_id].write_index++;
-        if (uart_tx_channel_state[channel_id].write_index >= TX_CHANNEL_FIFO_LEN) { uart_tx_channel_state[channel_id].write_index = 0; }
-        uart_tx_channel_state[channel_id].buf_depth++;
+        uart_tx_channel_state[channel_id].channel_data[write_index] = (char)chan_data;
+        write_index++;
+        if (write_index >= TX_CHANNEL_FIFO_LEN) { write_index = 0; }
     }
+
+    uart_tx_channel_state[channel_id].write_index = write_index;
+    uart_tx_channel_state[channel_id].buf_depth += buf_depth_available;
 }
 
 /** =========================================================================
@@ -532,34 +543,34 @@ static void collect_uart_tx_data(chanend cAppMgr2WbSvr)
 static void uart_rx_send_uart_channel_data(chanend cAppMgr2WbSvr)
 {
     int i = 0;
-    int local_read_index = 0;
-
     int channel_id = 0;
     int read_index = 0;
     unsigned int buf_depth = 0;
-    char buffer[] = "";
 
+    /* Get channel id*/
     cAppMgr2WbSvr :> channel_id;
-    read_index = uart_rx_channel_state[channel_id].read_index;
+
     buf_depth = uart_rx_channel_state[channel_id].buf_depth;
+    read_index = uart_rx_channel_state[channel_id].read_index;
 
     /* Send Uart X buffer depth */
     cAppMgr2WbSvr <: buf_depth;
-    local_read_index = read_index; // TODO: Bug: Data for chnl 7 is always present
 
-    for (i=0; i<buf_depth; i++)
+    for (i = 0; i < buf_depth; i++)
     {
         /* Send Uart X data over channel */
-        cAppMgr2WbSvr <: uart_rx_channel_state[channel_id].channel_data[local_read_index];
-        local_read_index++;
-        if (local_read_index >= RX_CHANNEL_FIFO_LEN) { local_read_index = 0; }
+        cAppMgr2WbSvr <: uart_rx_channel_state[channel_id].channel_data[read_index];
+
+        /* increment read index*/
+        read_index++;
+
+        /* Circle buffer */
+        if (read_index >= RX_CHANNEL_FIFO_LEN) { read_index = 0; }
     }
 
-    /* Data is pushed to app manager thread; Update buffer state pointers */
-    read_index += buf_depth;
-    if (read_index > (RX_CHANNEL_FIFO_LEN-1)) { read_index -= RX_CHANNEL_FIFO_LEN; }
+    /* update buffer pointers */
     uart_rx_channel_state[channel_id].read_index = read_index;
-    uart_rx_channel_state[channel_id].buf_depth -= buf_depth; //= 0;
+    uart_rx_channel_state[channel_id].buf_depth  = 0;
 }
 
 /** =========================================================================
@@ -916,4 +927,11 @@ void app_manager_handle_uart_data( streaming chanend cWbSvr2AppMgr,
     } // while(1)
 }
 
-//#pragma xta command "analyze function uart_rx_receive_uart_channel_data"
+#if 0
+
+#pragma xta command "echo --------------------------------------------------"
+#pragma xta command "echo AM-URRUCD"
+#pragma xta command "analyze function uart_rx_receive_uart_channel_data"
+#pragma xta command "print nodeinfo - -"
+
+#endif

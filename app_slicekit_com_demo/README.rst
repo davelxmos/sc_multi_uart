@@ -1,11 +1,14 @@
-This application serves as a sample demonstration on how to utilize 
-MultiUART component. 
+Multi Uart Slicekit Demo
+========================
 
-Modules Used: 
+:scope: Example
+:description: An example application that demonstrates the multi-uart
+              component on a slicekit board
+:keywords: uart, slicekit
 
-    module_multi_uart 
+This application serves as a sample demonstration on how to utilize
+MultiUART component. It uses the module_multi_uart and module_xc_ptr modules.
 
-    module_xc_ptr 
 
 To use this demo, first edit the main.xc source file and change the 
 slice kit slot as per your hardware configuration usage:
